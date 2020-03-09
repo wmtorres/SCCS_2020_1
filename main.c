@@ -1,91 +1,56 @@
-/**
- *  \file main.c
- *  \brief Implementa projeto de SCCS
- */
+/******************************************************************************
+ * Nome do Arquivo:	main.c
+ * Dependencias:	
+ * Processador:		PIC18F4550
+ * Opção de Clock:	HS 20MHz (externo) - CPU: 48MHz
+ * Compilador:		XC8 
+ *
+ * Autor:			Weslley M. Torres
+ *
+ * Data:			v1 - 08/March/2020 - Initial revision 
+ *
+ * Descrição:       Funções main
+ * 
+ * Notas:
+ *	
+ *****************************************************************************/
  
+ 
+ 
+/************************I N C L U D E S *************************************/
 
 #include "Config.h"
+#include "Hardware.h"
 #include "displayLCD.h"
-#include "eeprom.h"
-#include "adc.h"
 
-void InicializaHardware ( void ) ;
-void InicializaInterrupts( void );
-void OdometroParcial(void);
-void OdometroTotal(void);
+/*****************************************************************************/
 
-unsigned char AtualizaOdoParcial;
-unsigned char AtualizaOdoTotal;
-unsigned int TimerBreathingLight = 0;
 
-/**
- *  \brief void InicializaHardware ( void )
- *  
- *  \return Nenhum
- *  
- *  \details Inicializa perifericos e postas do microcontrolador
- */ 
-void InicializaHardware ( void )  
-{
-    
-    TRISA = 0xFF;
-    TRISB = 0x00;
-    TRISC = 0xFF;
-    TRISD = 0x00;
-    TRISE = 0xFF;
-       
-    LATA = 0x00;
-    LATB = 0xFF;
-    LATC = 0x00;
-    LATD = 0x00;
-    LATE = 0x00;
-    
-    ADCON0bits.ADON = 1;// habilita conversor
-    ADCON1 = 0x0D;
-    ADCON2bits.ADFM = 1;
-    ADCON2bits.ADCS0 = 0;
-    ADCON2bits.ADCS1 = 1;
-    ADCON2bits.ADCS2 = 1;
-    ADCON2bits.ACQT0 = 0;
-    ADCON2bits.ACQT1 = 1;
-    ADCON2bits.ACQT2 = 1;
-}
+/************************ Function Prototypes ********************************/
+void TaskLED_RB0( void );
+
+/*****************************************************************************/
+
+
+/************************ Variaveis ******************************************/
+
+uint16_t TimerBreathingLight = 0;
+uint16_t TimerTaskLED_RB0 = 0;
+
+/*****************************************************************************/
+
 
 /**
- *  \brief void InicializaInterrupts( void )
+ *  \brief ISR
  *  
- *  \return Nenhum
+ *  \return none
  *  
- *  \details Inicializa interrupções do microcontrolador
+ *  \details Interrupt service routine (be careful snce PIC has only one interrupt vector, based on that, the way you check the 	interrupt flag will be the priority)
  */
-void InicializaInterrupts( void )
+void interrupt isr(void)
 {
-    INTCON = 0b11100000;
-    INTCON2 = 0b10000000;
-    INTCON3 = 0b00000000; 
-    PIR1 = 0b00000000;
-    PIR2 = 0b00000000;
-    PIE1 = 0b00000100;
-    PIE2 = 0b00000000;
-    IPR1 = 0b00000000;
-    IPR2 = 0b00000000;
-    RCON = 0b00000000;
-    CCP1CON = 0b00000101;
-}
-
-/**
- *  \brief void interrupt isr (void)
- *  
- *  \return Nenhum
- *  
- *  \details Implementa o processamento das interrupções de CCP e Timer0
- */
-void interrupt isr (void)
-{
-    if(CCP1IF && CCP1IE)
-    {
-        CCP1IF = 0;
-    }
+    	
+    //check if Timer0 interupt was triggered
 	if (TMR0IF && T0IF)   
     {
         T0IF = 0;                 //set trigger for Timer0 interrupt (so it can be generated again)
@@ -102,60 +67,48 @@ void interrupt isr (void)
     }   
 }
 
-/**
- *  \brief void OdometroParcial(void)
+
+ /**
+ *  \brief main
  *  
- *  \return Nenhum
+ *  \return none
  *  
- *  \details Implementa a lógica para o Odometro Parcial
+ *  \details Main function of the system
  */
-void OdometroParcial(void)
-{ 
-    if(AtualizaOdoParcial==1 )
-    {
-        AtualizaOdoParcial = 0;
+void main(void) 
+{
+
+
+	uint8_t MsgPrimLinha[17] = "  TAPM Exp. I ";
+	uint8_t MsgSegLinha[17] =  "   09/03/20   ";
         
+	InitHardware();
+    
+    ConfiguraLCD();         
+ 
+    
+	/* Write welcome screen on LCD line 1 */
+	PosicaoCursorLCD(1,0);
+	EscreveFraseRamLCD(MsgPrimLinha);
+	
+    /* Write welcome screen on LCD line 2 */
+	PosicaoCursorLCD(2,0);
+	EscreveFraseRamLCD(MsgSegLinha);
+
+    
+    while(True)                      
+    {
+        TaskLED_RB0();
     }
-     
 }
 
 
-/**
- *  \brief void OdometroTotal(void)
- *  
- *  \return Nenhum
- *  
- *  \details Implementa a lógica para o Odometro Total
- */
-void OdometroTotal(void)
-{ 
-
-    if(AtualizaOdoTotal==1 )
-    {
-        AtualizaOdoTotal = 0;
-    }
-    
-}           
-
-/**
- *  \brief void main(void)
- *  
- *  \return Nenhum
- *  
- *  \details Função principal
- */
-void main(void)
+void TaskLED_RB0( void )
 {
-	InicializaHardware();
-	InicializaInterrupts();
-	Init_EEPROM();
-	ConfiguraLCD();
 
-
-	while (1)
-	{ 
-
+	if(TimerTaskLED_RB0 == 0)
+	{
+		TimerTaskLED_RB0 = TIMER_500ms;
+		LED_RB0 = ~LED_RB0;
 	}
 }
-
-
